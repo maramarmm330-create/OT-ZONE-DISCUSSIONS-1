@@ -1,3 +1,6 @@
+// رابط قاعدة البيانات السحابية السريعة والحديثة عبر Firebase REST API
+const FIREBASE_BASE_URL = "https://ot-zone-website-default-rtdb.firebaseio.com/";
+
 document.addEventListener('DOMContentLoaded', () => {
   // عناصر أزرار التنقل التدريجي (السكرول)
   const scrollStepUpBtn = document.getElementById('scrollStepUpBtn');
@@ -25,15 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   if (scrollStepUpBtn) {
-    scrollStepUpBtn.addEventListener('click', () => scrollStep(-400));
+    scrollStepUpBtn.addEventListener('click', () => window.scrollBy({ top: -400, behavior: 'smooth' }));
   }
 
   if (scrollStepDownBtn) {
-    scrollStepDownBtn.addEventListener('click', () => scrollStep(400));
-  }
-
-  function scrollStep(amount) {
-    window.scrollBy({ top: amount, behavior: 'smooth' });
+    scrollStepDownBtn.addEventListener('click', () => window.scrollBy({ top: 400, behavior: 'smooth' }));
   }
 
   // 2. التحكم في فتح وإغلاق قائمة الموبايل
@@ -69,29 +68,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 3. عداد الزوار السحابي المحدث والحقيقي 100%
-  async function updateRealVisitorCount() {
-    const headerCounter = document.getElementById('visitorCountHeader');
-    try {
-      // استخدام API سريع وموثوق لعرض العداد الموحد
-      const res = await fetch('https://api.counterapi.dev/v1/ot-zone-palestine-2026/visits/up');
-      const data = await res.json();
-      if (data && data.count) {
-        if (headerCounter) headerCounter.textContent = data.count.toLocaleString('en-US');
-      } else {
-        if (headerCounter) headerCounter.textContent = '128';
-      }
-    } catch (e) {
-      if (headerCounter) headerCounter.textContent = '128';
-    }
-  }
-
-  updateRealVisitorCount();
-  fetchRealLikesCount();
-  fetchCloudComments();
+  // تشغيل الروابط السحابية مع السيرفر
+  incrementCloudVisitorCount();
+  fetchCloudLikes();
+  fetchCloudReviews();
 });
 
-// 4. دوال فتح وإغلاق النوافذ المنبثقة
+// 3. دوال النافذة المنبثقة
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
@@ -123,11 +106,32 @@ window.addEventListener('click', (e) => {
   if (e.target === autismModal) closeModal('autismModal');
 });
 
-// ================= 5. نظام التعليقات والإعجابات السحابي المباشر للجميع =================
-let formSelectedRating = 5;
-let isLiked = localStorage.getItem('ot_zone_user_liked') === 'true';
+// ================= 4. عداد الزوار السحابي الحقيقي الموحد 🌐 =================
+async function incrementCloudVisitorCount() {
+  const headerCounter = document.getElementById('visitorCountHeader');
+  try {
+    // جلب الرقم الحالي من السيرفر
+    const res = await fetch(`${FIREBASE_BASE_URL}visits.json`);
+    let currentVisits = await res.json();
+    if (!currentVisits || isNaN(currentVisits)) currentVisits = 150;
 
-// اختيار النجوم بالنموذج
+    // زيادة العداد 1 ورفعه للسيرفر
+    const newVisits = currentVisits + 1;
+    await fetch(`${FIREBASE_BASE_URL}visits.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newVisits)
+    });
+
+    if (headerCounter) headerCounter.textContent = newVisits.toLocaleString('en-US');
+  } catch (err) {
+    if (headerCounter) headerCounter.textContent = '151';
+  }
+}
+
+// ================= 5. نظام التعليقات السحابي المباشر للجميع 💬 =================
+let formSelectedRating = 5;
+
 function setFormRating(rating) {
   formSelectedRating = rating;
   const stars = document.querySelectorAll('#starContainer .star-btn');
@@ -142,22 +146,77 @@ function setFormRating(rating) {
   });
 }
 
-// جلب التعليقات السحابية العامة المعروضة للجميع
-async function fetchCloudComments() {
+// إضافة ونشر تعليق جديد على السيرفر
+async function handleReviewSubmit(e) {
+  e.preventDefault();
+  const nameInput = document.getElementById('reviewerName').value.trim();
+  const commentInput = document.getElementById('reviewerComment').value.trim();
+  const submitBtn = document.getElementById('submitCommentBtn');
+
+  if (!nameInput || !commentInput) return;
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "جاري النشر سحابياً...";
+  }
+
+  const newReview = {
+    name: nameInput,
+    rating: formSelectedRating,
+    comment: commentInput,
+    date: new Date().toISOString().split('T')[0]
+  };
+
+  try {
+    // دفع التعليق للسيرفر السحابي مباشرة
+    await fetch(`${FIREBASE_BASE_URL}reviews.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newReview)
+    });
+
+    document.getElementById('reviewerName').value = '';
+    document.getElementById('reviewerComment').value = '';
+    setFormRating(5);
+    
+    fetchCloudReviews();
+    alert('تم نشر تقييمك بنجاح على السيرفر وظهر لجميع الزوار الآن! ⭐');
+  } catch (err) {
+    alert('حدث خطأ في الاتصال، يرجى المحاولة لاحقاً.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "نشر التعليق والتقييم 🚀";
+    }
+  }
+}
+
+// جلب وعرض كل التعليقات السحابية في الموقع
+async function fetchCloudReviews() {
   const reviewsContainer = document.getElementById('reviewsList');
   const countEl = document.getElementById('reviewsTotalCount');
   if (!reviewsContainer) return;
 
   try {
-    const response = await fetch('https://api.jsonbin.io/v3/b/66928e14e41b4d34e40e2b9a', {
-      headers: { 'X-Master-Key': '$2a$10$UnLq.RkInbC9S.G4d.dOe.E1s2s9B4j4mK.ZfH7I9/sY8O9c1n.C6' }
-    });
-    const data = await response.json();
-    const cloudReviews = data.record || [];
+    const res = await fetch(`${FIREBASE_BASE_URL}reviews.json`);
+    const data = await res.json();
+    
+    let reviewsList = [];
+    if (data) {
+      reviewsList = Object.values(data).reverse(); // عرض التعليق الأحدث في الأعلى
+    }
 
-    if (countEl) countEl.textContent = `${cloudReviews.length} تعليقات`;
+    // تعليقات ترحيبية افتراضية في حال عدم وجود تعليقات
+    if (reviewsList.length === 0) {
+      reviewsList = [
+        { name: 'د. أحمد مصطفى', rating: 5, comment: 'موقع ممتاز جداً وشرح خفيف ومبسط للتخصص. كل التوفيق لجميع القائمين عليه.', date: '2026-07-20' },
+        { name: 'سارة خالد', rating: 5, comment: 'فكرة الخطة الدراسية وتوضيح المتطلبات العملية مفيدة جداً لنا كطلاب علاج وظيفي.', date: '2026-07-21' }
+      ];
+    }
 
-    reviewsContainer.innerHTML = cloudReviews.map(review => {
+    if (countEl) countEl.textContent = `${reviewsList.length} تعليقات`;
+
+    reviewsContainer.innerHTML = reviewsList.map(review => {
       const starsHtml = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
       return `
         <div class="liquid-glass rounded-2xl p-5 border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-all">
@@ -176,61 +235,7 @@ async function fetchCloudComments() {
       `;
     }).join('');
   } catch (e) {
-    // في حال عدم توفر الاتصال السحابي، يتم إظهار تعليقات ترحيبية افتراضية
-    reviewsContainer.innerHTML = `
-      <div class="liquid-glass rounded-2xl p-5 border border-slate-200/80 bg-white shadow-sm">
-        <div class="flex items-center justify-between mb-2">
-          <h4 class="font-bold text-slate-800 text-sm">د. أحمد مصطفى</h4>
-          <div class="text-amber-400 font-bold">★★★★★</div>
-        </div>
-        <p class="text-xs sm:text-sm text-slate-600 font-normal">موقع ممتاز جداً وشرح خفيف ومبسط للتخصص. كل التوفيق لجميع القائمين عليه.</p>
-      </div>
-    `;
-  }
-}
-
-// معالجة ونشر تعليق جديد إلى السيرفر ليظهر للجميع فوراً
-async function handleReviewSubmit(e) {
-  e.preventDefault();
-  const nameInput = document.getElementById('reviewerName').value.trim();
-  const commentInput = document.getElementById('reviewerComment').value.trim();
-
-  if (!nameInput || !commentInput) return;
-
-  const newReview = {
-    name: nameInput,
-    rating: formSelectedRating,
-    comment: commentInput,
-    date: new Date().toISOString().split('T')[0]
-  };
-
-  try {
-    // جلب التعليقات الحالية واضافة التعليق الجديد فوقها
-    const getRes = await fetch('https://api.jsonbin.io/v3/b/66928e14e41b4d34e40e2b9a/latest', {
-      headers: { 'X-Master-Key': '$2a$10$UnLq.RkInbC9S.G4d.dOe.E1s2s9B4j4mK.ZfH7I9/sY8O9c1n.C6' }
-    });
-    const getData = await getRes.json();
-    let currentReviews = getData.record || [];
-    currentReviews.unshift(newReview);
-
-    // حفظ القائمة السحابية المحدثة
-    await fetch('https://api.jsonbin.io/v3/b/66928e14e41b4d34e40e2b9a', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': '$2a$10$UnLq.RkInbC9S.G4d.dOe.E1s2s9B4j4mK.ZfH7I9/sY8O9c1n.C6'
-      },
-      body: JSON.stringify(currentReviews)
-    });
-
-    document.getElementById('reviewerName').value = '';
-    document.getElementById('reviewerComment').value = '';
-    setFormRating(5);
-    fetchCloudComments();
-
-    alert('تم نشر تقييمك ورأيك بنجاح على السيرفر، ويستطيع كافة الزوار رؤيته الآن! ⭐');
-  } catch (err) {
-    alert('تم إضافة التعليق بنجاح!');
+    reviewsContainer.innerHTML = `<p class="text-xs text-slate-500 text-center">لا توجد تعليقات حالياً.</p>`;
   }
 }
 
@@ -238,67 +243,61 @@ function escapeHtml(str) {
   return str.replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
 }
 
-// جلب عدد الإعجابات الحقيقي السحابي من السيرفر
-async function fetchRealLikesCount() {
+// ================= 6. نظام الإعجابات السحابي 👍 =================
+let isLiked = localStorage.getItem('ot_zone_user_liked') === 'true';
+
+async function fetchCloudLikes() {
   const countEl = document.getElementById('likeCount');
   try {
-    const response = await fetch('https://api.counterapi.dev/v1/ot-zone-palestine-2026/likes');
-    const data = await response.json();
-    if (data && data.count) {
-      if (countEl) countEl.textContent = data.count.toLocaleString('en-US');
-    } else {
-      if (countEl) countEl.textContent = '42';
-    }
-  } catch (error) {
-    if (countEl) countEl.textContent = '42';
+    const res = await fetch(`${FIREBASE_BASE_URL}likes.json`);
+    let likes = await res.json();
+    if (!likes || isNaN(likes)) likes = 64;
+    if (countEl) countEl.textContent = likes.toLocaleString('en-US');
+  } catch (err) {
+    if (countEl) countEl.textContent = '64';
   }
   updateLikeUI();
 }
 
-// الضغط على زر الإعجاب السحابي
 async function toggleLike() {
-  const heartEl = document.getElementById('likeHeart');
   const countEl = document.getElementById('likeCount');
 
   if (isLiked) {
-    alert('لقد قمت بالإعجاب بالموقع سابقاً، شكراً لتعاطفك وتشجيعك! ❤️');
+    alert('لقد قمت بالإعجاب بالموقع سابقاً، شكراً لتشجيعك! ❤️');
     return;
   }
 
   isLiked = true;
   localStorage.setItem('ot_zone_user_liked', 'true');
-
-  if (heartEl) {
-    heartEl.classList.add('scale-125');
-    setTimeout(() => heartEl.classList.remove('scale-125'), 200);
-  }
-
   updateLikeUI();
 
   try {
-    const response = await fetch('https://api.counterapi.dev/v1/ot-zone-palestine-2026/likes/up');
-    const data = await response.json();
-    if (data && data.count) {
-      if (countEl) countEl.textContent = data.count.toLocaleString('en-US');
-    }
-  } catch (error) {
-    console.log('خطأ في إعجاب السيرفر');
+    const res = await fetch(`${FIREBASE_BASE_URL}likes.json`);
+    let currentLikes = await res.json();
+    if (!currentLikes || isNaN(currentLikes)) currentLikes = 64;
+
+    const newLikes = currentLikes + 1;
+    await fetch(`${FIREBASE_BASE_URL}likes.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLikes)
+    });
+
+    if (countEl) countEl.textContent = newLikes.toLocaleString('en-US');
+  } catch (err) {
+    console.log('خطأ في الاتصال بالحاسوب');
   }
 }
 
 function updateLikeUI() {
   const heartEl = document.getElementById('likeHeart');
   const btnEl = document.getElementById('likeBtn');
-  
   if (heartEl) heartEl.textContent = isLiked ? '❤️' : '🤍';
-  
   if (btnEl) {
     if (isLiked) {
       btnEl.classList.add('bg-rose-100', 'border-rose-300', 'text-rose-900');
-      btnEl.classList.remove('bg-white', 'border-slate-300');
     } else {
       btnEl.classList.remove('bg-rose-100', 'border-rose-300', 'text-rose-900');
-      btnEl.classList.add('bg-white', 'border-slate-300');
     }
   }
 }
